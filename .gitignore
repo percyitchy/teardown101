@@ -1,0 +1,5 @@
+node_modules
+.DS_Store
+# fonts from the first version, no longer used
+assets/fonts/sg-*
+assets/fonts/jb-*
