@@ -8,81 +8,92 @@
 <meta property="og:title" content="Teardown 101">
 <meta property="og:description" content="12 interactive lessons on reverse engineering any app, with a fake app to take apart.">
 <link rel="stylesheet" href="./src/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231E2A44'/><circle cx='14' cy='14' r='6.5' stroke='%23F3EAD8' stroke-width='2.6' fill='none'/><path d='M19 19l6 6' stroke='%23E0773F' stroke-width='3' stroke-linecap='round'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2l12 7v14l-12 7-12-7V9z' fill='%2318213D'/><circle cx='14.5' cy='14.5' r='5' stroke='%23F6EDDD' stroke-width='2.4' fill='none'/><path d='M18.3 18.3l4.5 4.5' stroke='%231AA3A1' stroke-width='2.8' stroke-linecap='round'/></svg>">
 </head>
 <body>
+<svg id="frames" class="frames" aria-hidden="true"></svg>
+<svg id="packets" class="packets" aria-hidden="true"></svg>
 <div class="app">
-	<header class="top">
-		<div class="logo-wrap">
-			<svg class="logo" viewBox="0 0 48 48"><rect x="3" y="3" width="42" height="42" rx="12"/><circle cx="21" cy="21" r="9"/><path d="M28 28l9 9"/><path d="M17 21h8M21 17v8" class="lt"/></svg>
+	<aside class="rail">
+		<button class="rail-btn" id="rail-panel" title="Toggle panel"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+		<div class="rail-icons">
+			<button id="rail-home" title="First lesson"><svg viewBox="0 0 24 24" class="fill"><path d="M3.5 11.5L12 4l8.5 7.5V20h-6v-5.5h-5V20h-6z"/></svg></button>
+			<button id="rail-lessons" title="Lessons"><svg viewBox="0 0 24 24"><path d="M3 5.5c3-1.2 6-1.2 9 1 3-2.2 6-2.2 9-1V19c-3-1.2-6-1.2-9 1-3-2.2-6-2.2-9-1z"/><path d="M12 6.5V20"/></svg></button>
+			<button id="rail-inspect" title="Inspect lesson"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></button>
+			<button id="reset" title="Reset progress"><svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></svg></button>
+			<button id="sound" class="sound" title="Sound on / off"><svg viewBox="0 0 24 24"><path class="spk" d="M4 9h3.5L12 5.5v13L7.5 15H4z"/><path class="w1" d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="w2" d="M18 7a7 7 0 0 1 0 10"/><path class="x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button>
 		</div>
+		<a class="credit" href="https://x.com/zodchiii" target="_blank" rel="noopener"><span class="by">BUILT BY</span><span class="who">x.com/zodchiii</span><svg viewBox="0 0 24 24"><path d="M5 4l14 16M19 4L5 20"/></svg></a>
+	</aside>
+
+	<header class="top">
+		<svg class="logo" viewBox="0 0 56 56"><path d="M28 3l22 12.5v25L28 53 6 40.5v-25z" class="hex"/><path d="M28 9.5l16.5 9.4v18.8L28 47.1 11.5 37.7V18.9z" class="hex2"/><circle cx="25.5" cy="25.5" r="7.5"/><path d="M31 31l6.5 6.5" class="h"/></svg>
 		<div class="title">
 			<h1>TEARDOWN 101</h1>
-			<span>OBSERVE · INTERCEPT · DECODE · REBUILD</span>
+			<span>OBSERVE <i>·</i> INTERCEPT <i>·</i> DECODE <i>·</i> REBUILD</span>
 		</div>
-		<div class="top-right">
-			<div class="chip-prog">
-				<svg viewBox="0 0 24 24"><path d="M4 5h11l5 5v9H4z"/><path d="M15 5v5h5M8 13h8M8 16h5"/></svg>
-				<div><b id="prog-grp">OBSERVE</b><div class="bar"><i id="prog-bar"></i></div></div>
+		<div class="hud" id="hud">
+			<div class="hud-prog">
+				<svg viewBox="0 0 32 32"><path d="M4 7.5c4-1.6 8-1.6 12 1.2 4-2.8 8-2.8 12-1.2V25c-4-1.6-8-1.6-12 1.2C12 23.4 8 23.4 4 25z"/><path d="M16 8.7v17.5"/></svg>
+				<div class="hp-mid"><b id="prog-grp">OBSERVE</b><div class="bar"><i id="prog-bar"></i></div></div>
 				<span id="prog-txt">0/26</span>
 			</div>
-			<div class="clock"><span>SESSION</span><b id="clock">00:00:00</b></div>
-			<button id="sound" class="sound" aria-label="Sound on/off" title="Sound"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="w1" d="M16.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="w2" d="M19 7a7 7 0 0 1 0 10"/><path class="x" d="M17 9.5l5 5M22 9.5l-5 5"/></svg></button>
+			<div class="hud-time"><span id="date">NOV 06, 2026</span><span id="clock">00:00:00</span></div>
 		</div>
 	</header>
 
-	<aside class="rail">
-		<button id="rail-home" title="First lesson"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg></button>
-		<button id="rail-panel" title="Hide panel"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14 4.5v15"/></svg></button>
-		<button id="reset" title="Reset progress"><svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></svg></button>
-		<a class="rail-x" href="https://x.com/zodchiii" target="_blank" rel="noopener" title="@zodchiii"><span>BY @ZODCHIII</span><svg viewBox="0 0 24 24"><path d="M5 4l14 16M19 4L5 20"/></svg></a>
-	</aside>
-
 	<main id="stage" class="stage">
-		<svg class="traces" aria-hidden="true" viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid slice">
-			<path d="M0 90h140l40 40h220M1000 140H840l-30 30H640M0 560h90l50-50h160M1000 600H880l-40-40H700M60 0v60l30 30M940 700v-70l-30-30"/>
-			<circle cx="400" cy="130" r="5"/><circle cx="640" cy="170" r="5"/><circle cx="300" cy="510" r="5"/><circle cx="700" cy="560" r="5"/>
-		</svg>
-		<div class="mat" aria-hidden="true"></div>
-		<svg class="tool tl-driver" viewBox="0 0 240 60" aria-hidden="true"><rect x="8" y="14" width="96" height="32" rx="14" fill="#5FA8A2"/><path d="M28 14v32M44 14v32M60 14v32M76 14v32" stroke="#3F8580" stroke-width="3"/><rect x="104" y="24" width="104" height="12" rx="3" fill="#C9CED6"/><path d="M208 24l22 6-22 6z" fill="#9AA1AC"/></svg>
-		<svg class="tool tl-loupe" viewBox="0 0 160 160" aria-hidden="true"><circle cx="62" cy="62" r="44" fill="#DCEFF0" fill-opacity=".7" stroke="#1E2A44" stroke-width="10"/><path d="M40 46a28 28 0 0 1 22-14" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/><rect x="96" y="92" width="24" height="60" rx="10" transform="rotate(-45 108 122)" fill="#E0773F" stroke="#1E2A44" stroke-width="6"/></svg>
-		<svg class="tool tl-tweezers" viewBox="0 0 200 50" aria-hidden="true"><path d="M6 25L188 12l4 5L20 27zM6 25l182 13 4-5L20 23z" fill="#B9C0CA" stroke="#1E2A44" stroke-width="4" stroke-linejoin="round"/></svg>
-		<div class="tool tl-note" aria-hidden="true"><b>pulse.app</b><span>teardown notes<br>v3.18.2</span></div>
-		<svg class="tool tl-screws" viewBox="0 0 120 50" aria-hidden="true"><g fill="#C9CED6" stroke="#1E2A44" stroke-width="4"><circle cx="20" cy="25" r="11"/><circle cx="58" cy="18" r="9"/><circle cx="96" cy="30" r="10"/></g><path d="M14 25h12M54 15l8 6M90 30h12M96 24v12" stroke="#1E2A44" stroke-width="3"/></svg>
-
-		<div class="specimen">
-			<div class="spec-tag"><i></i>TARGET · PULSE.APP <em>FICTIONAL</em></div>
+		<div class="floor" aria-hidden="true"></div>
+		<div class="glow" id="glow" aria-hidden="true"></div>
+		<div class="watermark" aria-hidden="true">x.com/zodchiii</div>
+		<div class="dev-label" id="dev-label">PHONE</div>
+		<div class="specimen" id="specimen">
+			<div class="live" id="live"><span class="dot"></span><b id="live-txt">GET /api/v2/me · 200</b></div>
 			<div class="device-box">
-				<div id="device" class="device">
-					<div id="device-screen" class="device-screen">
-						<div id="pulse" class="pulse"></div>
-						<div id="inspect-box" class="inspect-box" hidden><span id="inspect-tag"></span></div>
-					</div>
+				<div id="device"><div id="rig" class="rig"></div></div>
+			</div>
+			<div id="screen-holder" hidden>
+				<div id="device-screen" class="device-screen">
+					<div id="pulse" class="pulse"></div>
+					<div id="inspect-box" class="inspect-box" hidden><span id="inspect-tag"></span></div>
 				</div>
 			</div>
+			<div class="shadow" aria-hidden="true"></div>
 		</div>
 		<div id="callouts" class="callouts"></div>
-		<div class="stage-hint">Use Pulse like a normal app · every tap is logged in the lab</div>
+		<div class="toolbar">
+			<button data-act="home" title="Back to Today"><svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></svg></button>
+			<button data-act="back" title="Back"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></svg></button>
+			<i></i>
+			<button data-dev="phone" title="Phone"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></button>
+			<button data-dev="tablet" title="Tablet"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.2"/><path d="M19 12h.01"/></svg></button>
+			<button data-dev="laptop" title="Laptop"><svg viewBox="0 0 24 24"><rect x="4.5" y="5" width="15" height="10" rx="1.5"/><path d="M2 18.5h20"/></svg></button>
+			<button data-dev="desktop" title="Desktop"><svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="12.5" rx="1.8"/><path d="M9.5 20.5h5M12 16v4.5"/></svg></button>
+			<i></i>
+			<button data-act="labels" title="Labels on / off"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></button>
+			<button data-act="theme" title="Pulse dark mode"><svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 7.5h6M9 11h6M9 14.5h3"/></svg></button>
+		</div>
 	</main>
 
 	<section class="panel">
 		<nav class="ptabs">
 			<button class="ptab on" data-tab="overview">OVERVIEW</button>
 			<button class="ptab" data-tab="lab">LAB <span id="tab-lab-n">0/0</span></button>
-			<div class="pager"><button id="pager-prev" aria-label="Previous lesson">‹</button><button id="pager-next" aria-label="Next lesson">›</button></div>
+			<button class="ptab" data-tab="spec">SPEC</button>
 		</nav>
 		<div id="panel-body" class="panel-body">
 			<article id="ov" class="ov"></article>
 			<div id="lab" class="lab" hidden></div>
+			<div id="specv" class="specv" hidden></div>
 		</div>
 	</section>
 
 	<footer class="foot">
-		<div class="strip-head"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg><b id="strip-label">LESSON: OBSERVE</b></div>
+		<div class="strip-head"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg><b id="strip-label">LESSON: OBSERVE</b><svg class="chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg></div>
 		<div class="strip-wrap">
-			<button id="strip-left" class="strip-arrow" aria-label="Scroll lessons left">‹</button>
 			<div id="strip" class="strip"></div>
-			<button id="strip-right" class="strip-arrow dark" aria-label="Scroll lessons right">›</button>
+			<button id="strip-left" class="strip-arrow" aria-label="Previous lesson"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+			<button id="strip-right" class="strip-arrow dark" aria-label="Next lesson"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
 		</div>
 	</footer>
 </div>

@@ -1,5 +1,6 @@
 import { createPulse, BUNDLE_MIN, BUNDLE_PRETTY } from "./pulse.js";
 import { createSound } from "./sound.js";
+import { createDevices, renderWatch, DEVICES } from "./devices.js";
 const sound = createSound();
 
 // ---------------------------------------------------------------- tiny event bus
@@ -57,12 +58,25 @@ function describe(el) {
 	const cls = [...el.classList].filter((c) => c !== "on" && c !== "show").map((c) => "." + c).join("");
 	return el.tagName.toLowerCase() + cls;
 }
+function localRect(el) {
+	let x = 0, y = 0, n = el;
+	while (n && n !== pulseRoot) {
+		x += n.offsetLeft; y += n.offsetTop;
+		const p = n.offsetParent;
+		for (let a = n.parentElement; a && a !== p && a !== pulseRoot; a = a.parentElement) { x -= a.scrollLeft; y -= a.scrollTop; }
+		if (p && p !== pulseRoot && pulseRoot.contains(p)) { x -= p.scrollLeft; y -= p.scrollTop; }
+		n = p;
+	}
+	return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+}
 pulseRoot.addEventListener("mousemove", (e) => {
 	if (!inspect) return;
 	const el = e.target.closest(".pulse *") || e.target;
-	const scr = $("#device-screen"), r = el.getBoundingClientRect(), d = scr.getBoundingClientRect(), k = d.width / scr.offsetWidth || 1;
-	Object.assign(overlay.style, { left: (r.left - d.left) / k + "px", top: (r.top - d.top) / k + "px", width: r.width / k + "px", height: r.height / k + "px" });
-	overlay.hidden = false; overlayTag.textContent = `${describe(el)}  ${Math.round(r.width)}×${Math.round(r.height)}`;
+	let html = el; while (html && !(html instanceof HTMLElement)) html = html.parentElement;
+	if (!html) return;
+	const r = localRect(html);
+	Object.assign(overlay.style, { left: r.x + "px", top: r.y + "px", width: r.w + "px", height: r.h + "px" });
+	overlay.hidden = false; overlayTag.textContent = `${describe(html)}  ${r.w}×${r.h}`;
 	inspect.onHover?.(el);
 });
 pulseRoot.addEventListener("mouseleave", () => { overlay.hidden = true; });
@@ -165,17 +179,19 @@ const LESSONS = [
 			const names = { home: "Today", habit: "Habit detail", stats: "Stats", settings: "Settings", pro: "Paywall" };
 			el.innerHTML = `<div class="tool-head"><h3>Screen map</h3><span class="muted" id="map-count"></span></div><svg class="map" viewBox="0 0 600 290"></svg><div class="edge-list"></div>${hint("tap a habit, switch tabs, open Settings. Then try adding a 4th habit.")}`;
 			const svgEl = $(".map", el), list = $(".edge-list", el);
+			const drawn = new Set(), seenN = new Set();
 			const draw = () => {
 				let s = `<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>`;
 				for (const e of lab.edges.values()) {
 					const [x1, y1] = pos[e.from], [x2, y2] = pos[e.to];
 					const back = lab.edges.has(`${e.to}>${e.from}`) ? 10 : 0;
 					const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), nx = -dy / L * back, ny = dx / L * back;
-					s += `<line class="${e.to === "pro" ? "hot" : ""}" x1="${x1 + dx / L * 58 + nx}" y1="${y1 + dy / L * 30 + ny}" x2="${x2 - dx / L * 60 + nx}" y2="${y2 - dy / L * 32 + ny}" marker-end="url(#ar)"/>`;
+					const k = e.from + ">" + e.to, fresh = !drawn.has(k); drawn.add(k);
+					s += `<line class="${e.to === "pro" ? "hot" : ""} ${fresh ? "new" : ""}" pathLength="100" x1="${x1 + dx / L * 58 + nx}" y1="${y1 + dy / L * 30 + ny}" x2="${x2 - dx / L * 60 + nx}" y2="${y2 - dy / L * 32 + ny}" marker-end="url(#ar)"/>`;
 				}
 				for (const [k, [x, y]] of Object.entries(pos)) {
-					const seen = lab.screens.has(k);
-					s += `<g class="node ${seen ? "seen" : ""} ${k === "pro" ? "pro" : ""}" transform="translate(${x},${y})"><rect x="-58" y="-26" width="116" height="52" rx="12"/><text y="5">${seen ? names[k] : "?"}</text></g>`;
+					const seen = lab.screens.has(k), popN = seen && !seenN.has(k); if (seen) seenN.add(k);
+					s += `<g class="node ${seen ? "seen" : ""} ${popN ? "pop" : ""} ${k === "pro" ? "pro" : ""}" transform="translate(${x},${y})"><rect x="-58" y="-26" width="116" height="52" rx="12"/><text y="5">${seen ? names[k] : "?"}</text></g>`;
 				}
 				svgEl.innerHTML = s;
 				list.innerHTML = [...lab.edges.values()].map((e) => `<div class="edge ${e.to === "pro" ? "hot" : ""}"><b>${names[e.from]}</b> → <b>${names[e.to]}</b><span>${esc(e.via)}</span></div>`).join("") || '<p class="muted">No moves yet. Start clicking in Pulse.</p>';
@@ -267,10 +283,11 @@ const LESSONS = [
 		tasks: [{ id: "five", label: "Capture 10 requests" }, { id: "post", label: "Open a request that sends a body" }, { id: "err", label: "Catch a request that fails" }],
 		tool(el, done) {
 			el.innerHTML = `<div class="tool-head"><h3>Network</h3><div class="seg-sm"><button class="on" data-f="all">All</button><button data-f="fetch">Fetch</button><button data-f="analytics">Analytics</button></div></div><div class="net"><div class="net-list"></div><div class="net-detail muted">Select a request</div></div>${hint("check a habit, switch Stats to 30 days, toggle dark mode.")}`;
-			let filter = "all", sel = null, tab = "response";
+			let filter = "all", sel = null, tab = "response", lastId = lab.requests.length ? lab.requests[lab.requests.length - 1].id : 0;
 			const draw = () => {
 				const rows = lab.requests.filter((r) => filter === "all" || r.kind === filter).slice().reverse();
-				$(".net-list", el).innerHTML = `<div class="net-row head"><span>Method</span><span>Path</span><span>Status</span><span>Time</span></div>` + rows.map((r) => `<button class="net-row ${sel?.id === r.id ? "sel" : ""} ${r.kind}" data-id="${r.id}"><span class="m m-${r.method}">${r.method}</span><span class="p">${esc(r.path)}</span><span class="s ${statusClass(r.status)}">${r.status}</span><span class="t">${r.ms} ms</span></button>`).join("");
+				$(".net-list", el).innerHTML = `<div class="net-row head"><span>Method</span><span>Path</span><span>Status</span><span>Time</span></div>` + rows.map((r) => `<button class="net-row ${sel?.id === r.id ? "sel" : ""} ${r.kind} ${r.id > lastId ? "new" : ""}" data-id="${r.id}"><span class="m m-${r.method}">${r.method}</span><span class="p">${esc(r.path)}</span><span class="s ${statusClass(r.status)}">${r.status}</span><span class="t">${r.ms} ms</span></button>`).join("");
+				lastId = lab.requests.length ? lab.requests[lab.requests.length - 1].id : 0;
 				if (lab.requests.length >= 10) done("five");
 				if (lab.requests.some((r) => r.status >= 400)) done("err");
 			};
@@ -556,52 +573,152 @@ const CALLOUTS = {
 	diff: [["HABIT CARD", [0.4, 0.37], "l", 0.34], ["MATCH THIS", [0.86, 0.37], "r", 0.4]],
 	agent: [["SPEC.MD", [0.5, 0.45], "r", 0.42]],
 };
-const ICONS = {
-	rules: '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" fill="#F4C76B"/><path d="M8.6 12l2.4 2.4 4.6-4.8"/>',
-	map: '<rect x="2.5" y="4" width="6" height="5" rx="1.2" fill="#9FD3CF"/><rect x="15.5" y="4" width="6" height="5" rx="1.2" fill="#F4C76B"/><rect x="9" y="15" width="6" height="5" rx="1.2" fill="#F2A27E"/><path d="M8.5 6.5h7M5.5 9l5 6M18.5 9l-5 6"/>',
-	inspect: '<rect x="3" y="3" width="14" height="14" rx="2" fill="#9FD3CF" stroke-dasharray="3 2"/><path d="M12 12l8 3-3.4 1.4L15 20z" fill="#fff"/>',
-	tokens: '<circle cx="8" cy="8" r="4" fill="#F2A27E"/><circle cx="16" cy="8" r="4" fill="#9FD3CF"/><circle cx="12" cy="15.5" r="4" fill="#F4C76B"/>',
-	network: '<path d="M4 8h13l-3-3M20 16H7l3 3"/><circle cx="4" cy="8" r="1.4" fill="#F2A27E"/><circle cx="20" cy="16" r="1.4" fill="#9FD3CF"/>',
-	api: '<path d="M8 4c-2 0-2.5 1-2.5 3v2c0 1.5-1 2.5-2.5 3 1.5.5 2.5 1.5 2.5 3v2c0 2 .5 3 2.5 3M16 4c2 0 2.5 1 2.5 3v2c0 1.5 1 2.5 2.5 3-1.5.5-2.5 1.5-2.5 3v2c0 2-.5 3-2.5 3"/><circle cx="12" cy="12" r="2.4" fill="#F4C76B"/>',
-	storage: '<ellipse cx="12" cy="6" rx="7" ry="2.6" fill="#9FD3CF"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"/>',
-	rules2: '<rect x="5" y="10" width="14" height="10" rx="2" fill="#F2A27E"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2.5"/>',
-	bundle: '<path d="M6 3h8l4 4v14H6z" fill="#F4C76B"/><path d="M14 3v4h4M9.5 12l-2 2 2 2M14.5 12l2 2-2 2"/>',
-	file: '<rect x="3" y="5" width="18" height="14" rx="2" fill="#9FD3CF"/><path d="M7 10h2M11 10h2M15 10h2M7 14h2M11 14h2"/>',
-	diff: '<rect x="3" y="3" width="12" height="12" rx="2" fill="#F2A27E"/><rect x="9" y="9" width="12" height="12" rx="2" fill="#9FD3CF" fill-opacity=".85"/>',
-	agent: '<rect x="5" y="7" width="14" height="11" rx="3" fill="#F4C76B"/><path d="M12 7V4M9.5 12v1M14.5 12v1M9.5 15.5h5"/><circle cx="12" cy="3.5" r="1.2"/>',
+const CALLOUTS_WIDE = {
+	rules: [["THE TARGET", [0.5, 0.03], "l", 0.16], ["STUDY, DON'T COPY", [0.72, 0.4], "r", 0.36]],
+	map: [["SIDEBAR NAV", [0.1, 0.3], "l", 0.34], ["SCREEN", [0.62, 0.3], "r", 0.26]],
+	inspect: [["ELEMENT", [0.42, 0.42], "l", 0.5], ["BOX MODEL", [0.6, 0.42], "r", 0.34]],
+	tokens: [["COLOR", [0.5, 0.33], "l", 0.24], ["TYPE", [0.35, 0.18], "r", 0.14], ["RADIUS", [0.3, 0.45], "l", 0.6]],
+	api: [["RESPONSE SHAPE", [0.55, 0.45], "l", 0.56], ["/api/v2", [0.9, 0.08], "r", 0.14]],
+	storage: [["SETTINGS", [0.1, 0.42], "l", 0.44], ["COOKIES", [0.6, 0.02], "r", 0.14]],
+	file: [["EXPORT", [0.12, 0.42], "l", 0.44], ["BACKUP FILE", [0.6, 0.35], "r", 0.34]],
+	diff: [["HABIT CARD", [0.38, 0.42], "l", 0.42], ["MATCH THIS", [0.62, 0.42], "r", 0.36]],
+	bundle: [["MAIN.JS", [0.6, 0.5], "r", 0.46]],
+	agent: [["SPEC.MD", [0.6, 0.45], "r", 0.42]],
 };
-const icon = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="#1E2A44" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</svg>`;
+// ---------------------------------------------------------------- isometric thumbnails for the lesson strip
+const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16); const f = (v) => Math.max(0, Math.min(255, Math.round(v * k))); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; };
+const ISO = (x, y, z) => [38 + (x - y) * 0.866, 40 + (x + y) * 0.5 - z];
+const P = (pts) => "M" + pts.map((p) => ISO(...p).map((v) => v.toFixed(1)).join(" ")).join("L") + "Z";
+function box(x, y, z, w, d, h, c) {
+	const top = P([[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]]);
+	const left = P([[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]]);
+	const right = P([[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]]);
+	return `<path d="${left}" fill="${shade(c, .86)}"/><path d="${right}" fill="${shade(c, .72)}"/><path d="${top}" fill="${c}"/>`;
+}
+const onTop = (x, y, z, svg) => { const [a, b] = ISO(x, y, z); return `<g transform="translate(${a.toFixed(1)} ${b.toFixed(1)}) matrix(.866 .5 -.866 .5 0 0)">${svg}</g>`; };
+const C = { teal: "#6CC0BC", sand: "#E2CDA8", wood: "#C49866", coral: "#E8916A", yellow: "#F2D06B", cream: "#FFF8EA", slate: "#59647F", grey: "#B8BFCB", navy: "#2B3557" };
+const shadowE = '<ellipse cx="38" cy="50" rx="27" ry="8" fill="rgba(24,33,61,.12)"/>';
+const THUMBS = {
+	rules: shadowE + box(-14, -14, 0, 28, 28, 6, C.wood) + onTop(-8, -10, 6, '<path d="M10 0l9 4v7c0 6-4 10-9 12-5-2-9-6-9-12V4z" fill="#F2D06B" stroke="#18213D" stroke-width="1.4"/><path d="M6 11l3 3 6-6" stroke="#18213D" stroke-width="1.6" fill="none"/>'),
+	map: shadowE + box(-20, -16, 0, 12, 12, 8, C.teal) + box(8, -16, 0, 12, 12, 8, C.yellow) + box(-6, 6, 0, 12, 12, 8, C.coral) + `<path d="${P([[-8, -10, 8], [8, -10, 8]])}" stroke="#18213D" stroke-width="1.4"/>`,
+	inspect: shadowE + box(-12, -18, 0, 24, 36, 4, C.navy) + onTop(-10, -16, 4, '<rect x="0" y="0" width="20" height="32" rx="3" fill="#FFF8EA"/><rect x="3" y="8" width="14" height="8" rx="1.5" fill="none" stroke="#1AA3A1" stroke-width="1.6" stroke-dasharray="3 2"/><rect x="3" y="19" width="14" height="3" rx="1.5" fill="#E2CDA8"/><rect x="3" y="24" width="10" height="3" rx="1.5" fill="#E2CDA8"/>'),
+	tokens: shadowE + box(-16, -6, 0, 32, 12, 4, C.coral) + box(-16, -6, 4, 32, 12, 4, C.yellow) + box(-16, -6, 8, 32, 12, 4, C.teal) + box(-16, -6, 12, 32, 12, 4, C.cream),
+	network: shadowE + box(-24, -8, 0, 14, 14, 18, C.grey) + box(10, -8, 0, 14, 14, 24, C.slate) + `<path d="${P([[-10, -1, 14], [10, -1, 14]])}" stroke="#1AA3A1" stroke-width="2" stroke-dasharray="3 2"/>`,
+	api: shadowE + box(-16, -16, 0, 32, 32, 7, C.sand) + onTop(-12, -12, 7, '<text x="12" y="17" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="16" fill="#18213D" text-anchor="middle">{ }</text>'),
+	storage: shadowE + `<g>${[0, 9, 18].map((z) => `<ellipse cx="38" cy="${40 - z}" rx="16" ry="7" fill="${z === 18 ? "#9AD3CF" : "#6CC0BC"}" stroke="#18213D" stroke-width="1.3"/>`).join("")}</g><path d="M22 22v18M54 22v18" stroke="#18213D" stroke-width="1.3"/>`,
+	rules2: shadowE + box(-12, -8, 0, 24, 16, 18, C.coral) + `<path d="M31 26v-7a7 7 0 0 1 14 0v7" fill="none" stroke="#18213D" stroke-width="3"/><circle cx="38" cy="37" r="2.4" fill="#18213D"/>`,
+	bundle: shadowE + box(-12, -16, 0, 24, 32, 3, C.cream) + onTop(-10, -14, 3, '<rect x="2" y="3" width="14" height="2.4" rx="1.2" fill="#E8916A"/><rect x="2" y="9" width="18" height="2.4" rx="1.2" fill="#B8BFCB"/><rect x="5" y="15" width="12" height="2.4" rx="1.2" fill="#6CC0BC"/><rect x="5" y="21" width="9" height="2.4" rx="1.2" fill="#B8BFCB"/>'),
+	file: shadowE + box(-18, -14, 0, 36, 28, 5, C.navy) + onTop(-15, -11, 5, Array.from({ length: 12 }, (_, i) => `<rect x="${(i % 4) * 7.5}" y="${Math.floor(i / 4) * 7}" width="5" height="4.4" rx="1" fill="${["#F2D06B", "#6CC0BC", "#E8916A", "#FFF8EA"][i % 4]}"/>`).join("")),
+	diff: shadowE + box(-18, -12, 0, 22, 22, 4, C.coral) + box(-4, -2, 4, 22, 22, 4, C.teal),
+	agent: shadowE + box(-14, -12, 0, 28, 24, 20, C.yellow) + `<circle cx="32" cy="27" r="2.6" fill="#18213D"/><circle cx="44" cy="27" r="2.6" fill="#18213D"/><path d="M38 8v-5" stroke="#18213D" stroke-width="1.6"/><circle cx="38" cy="3" r="2" fill="#E8916A"/>`,
+};
+const thumb = (id) => `<svg viewBox="0 0 76 64">${THUMBS[id]}</svg>`;
 
 function drawCallouts() {
 	const stage = $("#stage"), layer = $("#callouts"), scr = $("#device-screen");
 	if (!stage || !layer) return;
 	const S = stage.getBoundingClientRect(), D = scr.getBoundingClientRect();
-	const list = CALLOUTS[LESSONS[lab.lesson].id] || [];
+	const id = LESSONS[lab.lesson].id;
+	const list = (devices.type !== "phone" && CALLOUTS_WIDE[id]) || CALLOUTS[id] || [];
 	let lines = "", chips = "";
 	for (const [t, [fx, fy], side, y] of list) {
 		const px = D.left - S.left + fx * D.width, py = D.top - S.top + fy * D.height;
-		const cy = y * S.height, cx = side === "l" ? D.left - S.left - 46 : D.right - S.left + 46;
-		if (cx < 70 || cx > S.width - 70) continue;
-		lines += `<path d="M${px} ${py} L${cx + (side === "l" ? 0 : 0)} ${cy}"/><circle cx="${px}" cy="${py}" r="4"/>`;
+		const cy = Math.max(40, Math.min(S.height - 90, y * S.height)), cx = side === "l" ? D.left - S.left - 56 : D.right - S.left + 56;
+		if (cx < 90 || cx > S.width - 90) continue;
+		const mx = side === "l" ? cx + 18 : cx - 18;
+		lines += `<path d="M${px} ${py} L${mx} ${cy} L${cx} ${cy}"/><circle cx="${px}" cy="${py}" r="3.5"/>`;
 		chips += `<span class="chip ${side}" style="left:${cx}px;top:${cy}px">${t}</span>`;
 	}
 	layer.innerHTML = `<svg width="${S.width}" height="${S.height}">${lines}</svg>${chips}`;
 }
 
+let userZoom = 1;
+const rigEl = $("#rig"), devices = createDevices(rigEl, $("#device-screen"));
+$("#stage").append(devices.watch);
+const sizeCache = {};
+function measureRig(dev) {
+	const t = devices.type;
+	if (sizeCache[t]) return sizeCache[t];
+	const prev = dev.style.transform;
+	dev.style.transform = "none"; rigEl.style.animation = "none"; rigEl.style.transition = "none";
+	const D = dev.getBoundingClientRect();
+	let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+	rigEl.querySelectorAll(".slab, .base, .mfoot, .mneck").forEach((n) => { const r = n.getBoundingClientRect(); x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); });
+	rigEl.style.animation = ""; rigEl.style.transition = ""; dev.style.transform = prev;
+	return (sizeCache[t] = { w: x1 - x0, h: y1 - y0, ox: D.left - x0, oy: D.top - y0 });
+}
 function fitDevice() {
-	const stage = $("#stage"), dev = $("#device");
+	const stage = $("#stage"), dev = $("#device"), box = $(".device-box");
 	if (!stage || !dev) return;
-	const H = stage.clientHeight - 120, W = stage.clientWidth - 40;
-	const k = Math.min(1, H / 700, W / 372);
-	dev.style.transform = `scale(${k})`;
-	dev.parentElement.style.height = 700 * k + "px";
-	dev.parentElement.style.width = 372 * k + "px";
-	requestAnimationFrame(drawCallouts);
+	const m = measureRig(dev);
+	const w = m.w, h = m.h;
+	const mob = innerWidth < 960;
+	const H = stage.clientHeight - (mob ? 90 : 170), W = stage.clientWidth - (mob ? 30 : 120);
+	const k = Math.max(0.25, Math.min(1.05, H / h, W / w) * userZoom);
+	dev.style.transform = `translate(${m.ox * k}px, ${m.oy * k}px) scale(${k})`;
+	box.style.width = w * k + "px"; box.style.height = h * k + "px";
+	$("#glow").style.transform = `scale(${Math.max(1, (w * k) / 420)})`;
+	// companion watch next to the phone
+	const wt = devices.watch, show = devices.type === "phone" && !mob;
+	wt.classList.toggle("hide", !show);
+	if (show) {
+		const S = stage.getBoundingClientRect(), B = box.getBoundingClientRect();
+		const wk = Math.min(1, k * 1.05);
+		Object.assign(wt.style, { left: B.right - S.left + 40 * wk + "px", top: B.top - S.top + B.height * 0.42 + "px", scale: wk });
+	}
+	requestAnimationFrame(() => { drawCallouts(); drawFrames(); });
+}
+const LESSON_DEVICE = { rules: "laptop", map: "phone", inspect: "laptop", tokens: "tablet", network: "phone", api: "desktop", storage: "tablet", rules2: "phone", bundle: "laptop", file: "desktop", diff: "tablet", agent: "laptop" };
+function useDevice(type, animate = true) {
+	if (!devices.set(type, { animate: false })) return false;
+	$("#dev-label").textContent = `TARGET DEVICE · ${DEVICES[type].name.toUpperCase()}`;
+	document.querySelectorAll("[data-dev]").forEach((b) => b.classList.toggle("on", b.dataset.dev === type));
+	fitDevice();
+	if (animate) { const dv = $("#device"); rigEl.classList.remove("swap"); dv.classList.remove("fade"); void rigEl.offsetWidth; rigEl.classList.add("swap"); dv.classList.add("fade"); }
+	setTimeout(fitDevice, 0);
+	return true;
+}
+const syncWatch = () => renderWatch($("#wscreen"), pulse.state);
+
+// circuit-board frames around the real layout boxes
+function drawFrames() {
+	const svg = $("#frames"); if (!svg || innerWidth < 960) return;
+	const R = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+	const hud = R("#hud"), panel = R(".panel"), stage = R("#stage"), foot = R(".foot"), title = R(".title");
+	if (!hud || !panel || !stage) return;
+	const W = innerWidth, H = innerHeight;
+	const cham = (x, y, w, h, c = 12) => `M${x + c} ${y}H${x + w - c}L${x + w} ${y + c}V${y + h - c}L${x + w - c} ${y + h}H${x + c}L${x} ${y + h - c}V${y + c}Z`;
+	let d = "", soft = "", dots = "", px = "";
+	// frame around the HUD and the panel
+	d += cham(hud.left - 4, hud.top - 6, hud.width + 8, hud.height + 12, 14);
+	d += cham(panel.left - 8, panel.top - 8, panel.width + 16, panel.height + 16, 16);
+	// inner stage frame with notches
+	const sx = stage.left + 30, sy = stage.top + 8, sw = stage.width - 60, sh = stage.height - 14;
+	soft += cham(sx, sy, sw, sh, 22);
+	// long trace from the title to the HUD frame
+	const ty = title.bottom + 14;
+	d += `M${title.left - 6} ${ty}H${title.right + 60}L${title.right + 90} ${ty - 30}H${hud.left - 70}L${hud.left - 40} ${hud.top + 10}H${hud.left - 4}`;
+	dots += `<circle cx="${title.right + 60}" cy="${ty}" r="5"/><circle cx="${hud.left - 70}" cy="${ty - 30}" r="5"/>`;
+	// traces from the panel frame to the right edge and down
+	d += `M${panel.right + 8} ${panel.top + 120}H${W - 14}M${panel.right + 8} ${panel.bottom - 60}H${W - 22}L${W - 8} ${panel.bottom - 46}`;
+	dots += `<circle cx="${W - 14}" cy="${panel.top + 120}" r="4.5"/>`;
+	// traces along the bottom under the strip
+	const fy = foot.bottom - 6;
+	soft += `M${foot.left} ${fy}H${foot.left + 200}L${foot.left + 222} ${fy - 18}H${foot.right - 260}L${foot.right - 238} ${fy}H${W}`;
+	dots += `<circle cx="${foot.left + 222}" cy="${fy - 18}" r="4"/><circle cx="${foot.right - 260}" cy="${fy - 18}" r="4"/>`;
+	// side traces in the stage margins
+	soft += `M${stage.left + 6} ${stage.top + 90}V${stage.top + 210}L${stage.left + 30} ${stage.top + 234}M${stage.left + 14} ${stage.bottom - 180}V${stage.bottom - 70}`;
+	dots += `<circle cx="${stage.left + 6}" cy="${stage.top + 90}" r="4"/><circle cx="${stage.left + 14}" cy="${stage.bottom - 180}" r="4"/><circle cx="${stage.left + 14}" cy="${stage.bottom - 70}" r="4"/>`;
+	// pixel clusters
+	const cluster = (x, y) => [[0, 0], [10, 0], [10, 10], [20, 10], [0, 20], [20, 26]].map(([a, b], i) => `<rect x="${x + a}" y="${y + b}" width="${i % 3 ? 8 : 10}" height="${i % 3 ? 8 : 10}" opacity="${0.4 + (i % 3) * 0.2}"/>`).join("");
+	px += cluster(W - 60, 18) + cluster(stage.left + 40, stage.bottom - 60) + cluster(W - 64, H - 70) + cluster(hud.left - 140, 18);
+	svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+	svg.innerHTML = `<path class="soft" d="${soft}"/><path d="${d}"/>${dots}${px}`;
 }
 
 // ---------------------------------------------------------------- shell
 const strip = $("#strip"), panelBody = $("#panel-body");
-let cleanup = null, tab = "overview", toolBox = null, curDone = null;
+let cleanup = null, tab = "overview", toolBox = null;
 
 const taskStats = () => {
 	const total = LESSONS.reduce((a, l) => a + l.tasks.length, 0);
@@ -612,20 +729,24 @@ const lessonDone = (l) => l.tasks.every((t) => lab.done.has(l.id + ":" + t.id));
 
 function renderStrip() {
 	strip.innerHTML = LESSONS.map((l, i) => `<button class="card ${i === lab.lesson ? "cur" : ""} ${lessonDone(l) ? "done" : ""}" data-i="${i}">
-		<span class="ic">${icon(l.id)}</span><span class="tx"><b>${i + 1}. ${l.title}</b><em>${l.group}</em></span>${lessonDone(l) ? '<i class="ok">✓</i>' : ""}</button>`).join("");
+		<span class="ic">${thumb(l.id)}</span><b>${i + 1}. ${l.title}</b>${lessonDone(l) ? '<i class="ok">✓</i>' : ""}</button>`).join("");
 	const [got, total] = taskStats();
 	$("#prog-bar").style.width = (got / total) * 100 + "%";
 	$("#prog-txt").textContent = `${got}/${total}`;
 	$("#prog-grp").textContent = LESSONS[lab.lesson].group.toUpperCase();
 	$("#strip-label").textContent = `LESSON: ${LESSONS[lab.lesson].group.toUpperCase()}`;
-	strip.querySelector(".cur")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+	const cur = strip.querySelector(".cur");
+	if (cur) strip.scrollTo({ left: cur.offsetLeft - strip.offsetLeft - 20, behavior: "smooth" });
 }
 
 function tasksHTML(l) {
 	return l.tasks.map((t) => `<li class="${lab.done.has(l.id + ":" + t.id) ? "ok" : ""}"><i></i>${t.label}</li>`).join("");
 }
-function refreshTasks(l) {
-	document.querySelectorAll(".tasks").forEach((ul) => (ul.innerHTML = tasksHTML(l)));
+function refreshTasks(l, popId) {
+	document.querySelectorAll(".tasks").forEach((ul) => {
+		ul.innerHTML = tasksHTML(l);
+		if (popId) ul.children[l.tasks.findIndex((t) => t.id === popId)]?.classList.add("pop");
+	});
 	const n = l.tasks.filter((t) => lab.done.has(l.id + ":" + t.id)).length;
 	$("#tab-lab-n").textContent = `${n}/${l.tasks.length}`;
 }
@@ -633,7 +754,8 @@ function refreshTasks(l) {
 function setTab(t) {
 	tab = t;
 	document.querySelectorAll(".ptab").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
-	$("#ov").hidden = t !== "overview"; $("#lab").hidden = t !== "lab";
+	$("#ov").hidden = t !== "overview"; $("#lab").hidden = t !== "lab"; $("#specv").hidden = t !== "spec";
+	if (t === "spec") $("#specv").innerHTML = `<h3>YOUR SPEC SO FAR</h3><p>Everything you collect across the lessons lands here. Lesson 12 turns it into a file.</p><pre class="code spec">${esc(buildSpec())}</pre>`;
 	panelBody.scrollTop = 0;
 }
 
@@ -647,44 +769,89 @@ function open(i) {
 		<h2>${l.title}</h2>
 		<p class="kicker">${l.kicker}</p>
 		<div class="why">${l.why.map((p) => `<p>${p}</p>`).join("")}</div>
-		<div class="box-card"><h4>TASKS</h4><ul class="tasks"></ul><button class="btn wide" data-golab>Open the lab →</button></div>`;
+		<div class="box-card"><h4>TASKS</h4><p class="sub">Each one checks itself off while you work in the lab.</p><ul class="tasks"></ul><button class="btn wide" data-golab>OPEN THE LAB →</button></div>`;
 	$("#lab").innerHTML = `<div class="lab-top"><ul class="tasks compact"></ul></div><div id="tool"></div>`;
 	toolBox = document.createElement("div");
 	$("#tool").append(toolBox);
 	const done = (id) => {
 		const k = l.id + ":" + id;
 		if (lab.done.has(k)) return;
-		lab.done.add(k); persist(); refreshTasks(l); renderStrip();
-		if (lessonDone(l)) { toast(`Lesson ${i + 1} complete ✓`); sound.play("lesson"); } else sound.play("task");
+		lab.done.add(k); persist(); refreshTasks(l, id); renderStrip();
+		if (lessonDone(l)) { toast(`Lesson ${i + 1} complete`); sound.play("lesson"); } else sound.play("task");
 	};
-	curDone = done;
 	refreshTasks(l);
 	cleanup = l.tool(toolBox, done) || null;
 	$("[data-golab]").onclick = () => setTab("lab");
-	$("#pager-prev").disabled = i === 0;
-	$("#pager-next").textContent = i === LESSONS.length - 1 ? "✓" : "›";
-	setTab(["inspect", "tokens"].includes(l.id) ? "lab" : tab === "lab" ? "lab" : "overview");
+	setTab(["inspect", "tokens"].includes(l.id) || tab === "lab" ? "lab" : "overview");
+	const swapped = useDevice(LESSON_DEVICE[l.id] || "phone");
 	renderStrip(); drawCallouts();
+	enterAnim(swapped);
 	try { history.replaceState(null, "", "#" + l.id); } catch {}
 }
 
+function enterAnim(swapped) {
+	const box = $(".device-box"); box.classList.remove("enter"); void box.offsetWidth; if (!swapped) box.classList.add("enter");
+	const pane = tab === "lab" ? [...$("#lab").children, ...(toolBox ? toolBox.children : [])] : tab === "spec" ? [...$("#specv").children] : [...$("#ov").children];
+	pane.forEach((el, i) => { el.classList.remove("rise"); void el.offsetWidth; el.style.animationDelay = 80 + i * 55 + "ms"; el.classList.add("rise"); });
+	document.querySelectorAll(".chip").forEach((c, i) => (c.style.animationDelay = 250 + i * 110 + "ms"));
+}
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.tm); toast.tm = setTimeout(() => t.classList.remove("show"), 2200); }
+
+// packets: a dot flies from the phone to the panel on every request
+function packet(r) {
+	const layer = $("#packets"); if (!layer || innerWidth < 960) return;
+	const D = $("#device-screen").getBoundingClientRect(), Pn = $(".panel").getBoundingClientRect();
+	const x1 = D.right - 6, y1 = D.top + D.height * 0.42, x2 = Pn.left + 6, y2 = Pn.top + Math.min(Pn.height * 0.42, 360);
+	const mx = (x1 + x2) / 2, d = `M${x1} ${y1} C${mx} ${y1 - 120} ${mx} ${y2 - 120} ${x2} ${y2}`;
+	const bad = r.status >= 400, ana = r.kind === "analytics";
+	const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+	g.setAttribute("class", "pk" + (bad ? " bad" : "") + (ana ? " ana" : ""));
+	g.innerHTML = `<path d="${d}" pathLength="100"/><circle r="${ana ? 4 : 6}" style="offset-path:path('${d}')"/>`;
+	layer.append(g);
+	setTimeout(() => g.remove(), 1100);
+}
+
+// live request pill + glow above the phone
+bus.on("request", (r) => {
+	packet(r);
+	const lv = $("#live"); lv.classList.remove("bump"); void lv.offsetWidth; lv.classList.add("bump");
+	const live = $("#live"), glow = $("#glow");
+	$("#live-txt").textContent = `${r.method} ${r.path.replace("/api/v2", "")} · ${r.status}`;
+	live.classList.toggle("bad", r.status >= 400);
+	glow.classList.remove("flash", "bad"); void glow.offsetWidth; glow.classList.add(r.status >= 400 ? "bad" : "flash");
+	clearTimeout(glow.tm); glow.tm = setTimeout(() => glow.classList.remove("flash", "bad"), 380);
+});
 
 strip.addEventListener("click", (e) => { const b = e.target.closest("[data-i]"); if (b) open(+b.dataset.i); });
 document.querySelectorAll(".ptab").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
-$("#pager-prev").onclick = () => open(lab.lesson - 1);
-$("#pager-next").onclick = () => (lab.lesson === LESSONS.length - 1 ? toast("Course complete. Go take something apart.") : open(lab.lesson + 1));
-$("#strip-left").onclick = () => strip.scrollBy({ left: -strip.clientWidth * 0.8, behavior: "smooth" });
-$("#strip-right").onclick = () => strip.scrollBy({ left: strip.clientWidth * 0.8, behavior: "smooth" });
+$("#strip-left").onclick = () => open(lab.lesson - 1);
+$("#strip-right").onclick = () => (lab.lesson === LESSONS.length - 1 ? toast("Course complete. Go take something apart.") : open(lab.lesson + 1));
 $("#reset").onclick = () => { lab.done.clear(); persist(); open(0); };
 $("#rail-home").onclick = () => open(0);
-$("#rail-panel").onclick = () => document.body.classList.toggle("panel-hidden");
+$("#rail-lessons").onclick = () => strip.scrollIntoView({ behavior: "smooth" });
+$("#rail-inspect").onclick = () => open(2);
+$("#rail-panel").onclick = () => { document.body.classList.toggle("panel-hidden"); setTimeout(fitDevice, 30); };
+document.querySelector(".toolbar").addEventListener("click", (e) => {
+	const dv = e.target.closest("[data-dev]"); if (dv) { useDevice(dv.dataset.dev); return; }
+	const b = e.target.closest("[data-act]"); if (!b) return;
+	const a = b.dataset.act;
+	if (a === "home") pulse.go("home", "toolbar");
+	if (a === "back") pulse.go(pulse.state.screen === "habit" ? "home" : "home", "toolbar");
+	if (a === "in") { userZoom = Math.min(1.25, userZoom + 0.1); fitDevice(); }
+	if (a === "out") { userZoom = Math.max(0.6, userZoom - 0.1); fitDevice(); }
+	if (a === "labels") b.classList.toggle("on", !document.body.classList.toggle("no-labels"));
+	if (a === "theme") pulseRoot.querySelector("[data-theme-toggle]") ? pulseRoot.querySelector("[data-theme-toggle]").click() : (pulse.go("settings", "toolbar"), setTimeout(() => pulseRoot.querySelector("[data-theme-toggle]")?.click(), 300));
+});
 window.addEventListener("resize", fitDevice);
 bus.on("nav", () => requestAnimationFrame(drawCallouts));
+bus.on("nav", () => setTimeout(syncWatch));
+bus.on("request", () => setTimeout(syncWatch));
 
-// session timer in the header
+// header date + session timer
 const t0 = Date.now();
-setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("#clock").textContent = [s / 3600, (s / 60) % 60, s % 60].map((v) => String(Math.floor(v)).padStart(2, "0")).join(":"); }, 1000);
+$("#date").textContent = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }).toUpperCase();
+setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("#clock").textContent = "SESSION " + [s / 3600, (s / 60) % 60, s % 60].map((v) => String(Math.floor(v)).padStart(2, "0")).join(":"); }, 1000);
+$("#clock").textContent = "SESSION 00:00:00";
 
 // ---------------------------------------------------------------- sound wiring
 const sBtn = $("#sound");
@@ -694,15 +861,17 @@ document.addEventListener("pointerdown", () => sound.on && sound.start(), { capt
 document.addEventListener("click", (e) => {
 	if (e.target.closest("#sound")) return;
 	if (e.target.closest("#pulse")) return sound.play(inspect ? "pick" : "tap");
-	if (e.target.closest(".card, .ptab, #pager-prev, #pager-next")) return sound.play("page");
+	if (e.target.closest(".card, .ptab, .strip-arrow")) return sound.play("page");
 	if (e.target.closest("button, input[type=range]")) sound.play("click");
 }, true);
 document.addEventListener("input", (e) => { if (e.target.matches("input:not([type=range])")) sound.play("type"); });
 bus.on("request", (r) => sound.play("request", r.method, r.status));
 
 pulse.boot();
+syncWatch();
 const fromHash = LESSONS.findIndex((l) => "#" + l.id === location.hash);
 fitDevice();
 open(fromHash >= 0 ? fromHash : lab.lesson);
 setTimeout(fitDevice, 300);
-window.__teardown = { lab, pulse, open, LESSONS };
+document.fonts?.ready.then(fitDevice);
+window.__teardown = { lab, pulse, open, LESSONS, useDevice, fitDevice };

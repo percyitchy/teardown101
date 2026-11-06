@@ -74,15 +74,16 @@ export function createSound() {
 		}
 	}
 	function schedule() {
+		// after the tab was in the background, never replay a backlog of missed steps at once
+		if (nextT < ctx.currentTime - 0.05) nextT = ctx.currentTime + 0.05;
 		while (nextT < ctx.currentTime + 0.2) {
 			const bar = Math.floor(step / 16) % 4, s = step % 16, t = nextT;
 			if (s === 0 || s === 10) { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.15); g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); o.connect(g).connect(music); o.start(t); o.stop(t + 0.32); }
 			if (s === 4 || s === 12) { NB ||= noiseBuf(); const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); n.buffer = NB; f.type = "bandpass"; f.frequency.value = 1700; f.Q.value = 0.8; g.gain.setValueAtTime(0.09, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); n.connect(f).connect(g); g.connect(music); g.connect(verb); n.start(t, Math.random() * 0.5); n.stop(t + 0.2); }
-			if (s % 2 === 0) { NB ||= noiseBuf(); const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); n.buffer = NB; f.type = "highpass"; f.frequency.value = 7500; g.gain.setValueAtTime(s % 4 ? 0.012 : 0.022, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04); n.connect(f).connect(g).connect(music); n.start(t, Math.random() * 0.5); n.stop(t + 0.05); }
+			if (s % 2 === 0) { NB ||= noiseBuf(); const n = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); n.buffer = NB; f.type = "highpass"; f.frequency.value = 7500; g.gain.setValueAtTime(s % 4 ? 0.006 : 0.011, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04); n.connect(f).connect(g).connect(music); n.start(t, Math.random() * 0.5); n.stop(t + 0.05); }
 			if (s === 0) keys(t + 0.01, CH[bar], STEP * 15);
 			if (s === 8) keys(t + 0.02, CH[bar].slice(1), STEP * 7);
 			if (s === 0 || s === 7 || s === 11) { const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter(); o.type = "triangle"; o.frequency.value = midi(BASS[bar] + (s === 11 ? 7 : 0)); f.type = "lowpass"; f.frequency.value = 500; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + STEP * 3.5); o.connect(f).connect(g).connect(music); o.start(t); o.stop(t + STEP * 4); }
-			if (Math.random() < 0.35) { NB ||= noiseBuf(); const n = ctx.createBufferSource(), g = ctx.createGain(); n.buffer = NB; g.gain.setValueAtTime(0.012, t + Math.random() * STEP); g.gain.exponentialRampToValueAtTime(0.0001, t + STEP); n.connect(g).connect(music); n.start(t, Math.random() * 0.8); n.stop(t + STEP); }
 			step++; nextT += STEP;
 		}
 	}
@@ -93,8 +94,13 @@ export function createSound() {
 		if (started) return;
 		started = true;
 		nextT = ctx.currentTime + 0.1; timer = setInterval(schedule, 40);
-		music.gain.setTargetAtTime(0.5, ctx.currentTime, 1.2);
+		music.gain.setTargetAtTime(0.35, ctx.currentTime, 1.2);
 	}
+
+	document.addEventListener("visibilitychange", () => {
+		if (!ctx || !started) return;
+		if (document.hidden) ctx.suspend(); else if (on) { ctx.resume(); nextT = ctx.currentTime + 0.05; }
+	});
 
 	return {
 		start,
