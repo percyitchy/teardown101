@@ -227,7 +227,7 @@ const LESSONS = [
 					show(node); lab.inspected.add(describe(node));
 					if (node.closest(".pl-check")) done("btn");
 					if (node.classList.contains("pl-card")) done("card");
-					if (node.textContent.trim() && getComputedStyle(node).fontFamily.includes("Inter")) done("font");
+					if (node.textContent.trim() && getComputedStyle(node).fontFamily.includes("Barlow")) done("font");
 				},
 			});
 			return () => setInspect(null);
@@ -251,7 +251,7 @@ const LESSONS = [
 				if (view === "table") {
 					$(".tok", el).innerHTML = `
 					<div class="tok-sec"><h4>Color <span>${C.length}</span></h4><div class="swatches">${C.map((t) => `<div class="swatch"><i style="background:${t.value}"></i><code>${hex(t.value)}</code></div>`).join("") || '<p class="muted">Click something colorful</p>'}</div></div>
-					<div class="tok-sec"><h4>Type <span>${T.length}</span></h4>${T.map((t) => `<div class="type-row"><span style="font:${t.value.split(" ")[1]} ${t.value.split(" ")[0]} Inter">Aa</span><code>${t.value}</code></div>`).join("") || '<p class="muted">Click some text</p>'}</div>
+					<div class="tok-sec"><h4>Type <span>${T.length}</span></h4>${T.map((t) => `<div class="type-row"><span style="font:${t.value.split(" ")[1]} ${t.value.split(" ")[0]} Barlow">Aa</span><code>${t.value}</code></div>`).join("") || '<p class="muted">Click some text</p>'}</div>
 					<div class="tok-sec"><h4>Radius <span>${R.length}</span></h4><div class="radii">${R.map((t) => `<div><i style="border-radius:${t.value}"></i><code>${t.value}</code></div>`).join("") || '<p class="muted">Click a card or a button</p>'}</div></div>`;
 				} else {
 					const lines = [...C.map((t, i) => `  --color-${i + 1}: ${hex(t.value)};`), ...T.map((t, i) => `  --text-${i + 1}: ${t.value.split(" ")[0]};  /* weight ${t.value.split(" ")[1]} */`), ...R.map((t, i) => `  --radius-${i + 1}: ${t.value};`)];
@@ -465,10 +465,10 @@ const LESSONS = [
 		],
 		tasks: [{ id: "under5", label: "Get mismatch under 10%" }, { id: "under2", label: "Get mismatch under 2%" }],
 		tool(el, done) {
-			const target = { radius: 16, pad: 14, size: 15, weight: 600, color: "#6D5DFC", gap: 12 };
-			const mine = lab.diff ||= { radius: 6, pad: 22, size: 18, weight: 400, color: "#FF7A59", gap: 4 };
+			const target = { radius: 12, pad: 14, size: 15, weight: 600, color: "#1AA3A1", gap: 12 };
+			const mine = lab.diff ||= { radius: 6, pad: 22, size: 18, weight: 400, color: "#E0773F", gap: 4 };
 			const ctrls = [["radius", "Radius", 0, 28, 1, "px"], ["pad", "Padding", 4, 28, 1, "px"], ["gap", "Gap", 0, 24, 1, "px"], ["size", "Title size", 11, 22, 1, "px"], ["weight", "Title weight", 300, 800, 100, ""]];
-			const colors = ["#6D5DFC", "#FF7A59", "#1FAE7A", "#7C6CF0", "#5B4BE8"];
+			const colors = ["#1AA3A1", "#E0773F", "#3E6AA8", "#2F8F8D", "#18213D"];
 			el.innerHTML = `<div class="tool-head"><h3>Overlay diff</h3><div class="seg-sm"><button class="on" data-m="diff">Difference</button><button data-m="onion">Onion skin</button><button data-m="side">Side by side</button></div></div>
 			<div class="diff-stage"><div class="layer orig"></div><div class="layer mine"></div></div>
 			<div class="meter"><div class="meter-bar"><i></i></div><b id="mm"></b></div>
@@ -623,7 +623,9 @@ function drawCallouts() {
 	let lines = "", chips = "";
 	for (const [t, [fx, fy], side, y] of list) {
 		const px = D.left - S.left + fx * D.width, py = D.top - S.top + fy * D.height;
-		const cy = Math.max(40, Math.min(S.height - 90, y * S.height)), cx = side === "l" ? D.left - S.left - 56 : D.right - S.left + 56;
+		const cy = Math.max(40, Math.min(S.height - 90, y * S.height));
+		let cx = side === "l" ? D.left - S.left - 56 : D.right - S.left + 56;
+		if (side !== "l") cx = Math.min(cx, S.width - (t.length * 8.6 + 34)); // keep the chip inside the stage
 		if (cx < 90 || cx > S.width - 90) continue;
 		const mx = side === "l" ? cx + 18 : cx - 18;
 		lines += `<path d="M${px} ${py} L${mx} ${cy} L${cx} ${cy}"/><circle cx="${px}" cy="${py}" r="3.5"/>`;
@@ -633,6 +635,7 @@ function drawCallouts() {
 }
 
 let userZoom = 1;
+const orbit = { x: 0, y: 0, vx: 0, vy: 0, raf: 0 };
 const rigEl = $("#rig"), devices = createDevices(rigEl, $("#device-screen"));
 $("#stage").append(devices.watch);
 const sizeCache = {};
@@ -671,6 +674,7 @@ function fitDevice() {
 const LESSON_DEVICE = { rules: "laptop", map: "phone", inspect: "laptop", tokens: "tablet", network: "phone", api: "desktop", storage: "tablet", rules2: "phone", bundle: "laptop", file: "desktop", diff: "tablet", agent: "laptop" };
 function useDevice(type, animate = true) {
 	if (!devices.set(type, { animate: false })) return false;
+	if (window.__orbitReady) { cancelAnimationFrame(orbit.raf); orbit.x = orbit.y = orbit.vx = orbit.vy = 0; applyOrbit(); }
 	$("#dev-label").textContent = `TARGET DEVICE · ${DEVICES[type].name.toUpperCase()}`;
 	document.querySelectorAll("[data-dev]").forEach((b) => b.classList.toggle("on", b.dataset.dev === type));
 	fitDevice();
@@ -839,10 +843,73 @@ document.querySelector(".toolbar").addEventListener("click", (e) => {
 	if (a === "back") pulse.go(pulse.state.screen === "habit" ? "home" : "home", "toolbar");
 	if (a === "in") { userZoom = Math.min(1.25, userZoom + 0.1); fitDevice(); }
 	if (a === "out") { userZoom = Math.max(0.6, userZoom - 0.1); fitDevice(); }
+	if (a === "view") resetOrbit();
 	if (a === "labels") b.classList.toggle("on", !document.body.classList.toggle("no-labels"));
 	if (a === "theme") pulseRoot.querySelector("[data-theme-toggle]") ? pulseRoot.querySelector("[data-theme-toggle]").click() : (pulse.go("settings", "toolbar"), setTimeout(() => pulseRoot.querySelector("[data-theme-toggle]")?.click(), 300));
 });
 window.addEventListener("resize", fitDevice);
+
+// ---------------------------------------------------------------- orbit: drag anywhere on the stage to spin the device in 3D
+// a short drag threshold keeps normal taps on the app working; a drag swallows the click that follows it
+const stageEl = $("#stage");
+let drag = null, swallowClick = false;
+function applyOrbit() {
+	stageEl.style.setProperty("--ux", orbit.x.toFixed(2) + "deg");
+	stageEl.style.setProperty("--uy", orbit.y.toFixed(2) + "deg");
+	const yaw = ((((orbit.y + 180) % 360) + 360) % 360) - 180;
+	document.body.classList.toggle("orbit-away", Math.abs(yaw) > 35 || Math.abs(orbit.x) > 20);
+	if (!document.body.classList.contains("orbit-away")) requestAnimationFrame(drawCallouts);
+}
+const clampX = (v) => { const rx = DEVICES[devices.type]?.rx ?? -10; return Math.max(-58 - rx, Math.min(4 - rx, v)); };
+function resetOrbit(animate = true) {
+	cancelAnimationFrame(orbit.raf);
+	// unwind to the nearest full turn so the device swings back the short way
+	orbit.y = Math.round(orbit.y / 360) * 360; applyOrbit();
+	if (!animate) document.body.classList.add("orbiting");
+	requestAnimationFrame(() => { orbit.x = 0; orbit.y = 0; orbit.vx = orbit.vy = 0; applyOrbit(); requestAnimationFrame(() => document.body.classList.remove("orbiting")); });
+}
+stageEl.addEventListener("pointerdown", (e) => {
+	if (e.button !== 0 || e.target.closest(".toolbar, .chip, input, textarea")) return;
+	cancelAnimationFrame(orbit.raf);
+	drag = { x: e.clientX, y: e.clientY, ox: orbit.x, oy: orbit.y, on: false, id: e.pointerId, lx: e.clientX, ly: e.clientY, t: performance.now() };
+});
+window.addEventListener("pointermove", (e) => {
+	if (!drag) return;
+	const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+	if (!drag.on) {
+		if (Math.hypot(dx, dy) < 7) return;
+		drag.on = true;
+		document.body.classList.add("orbiting", "orbit-used");
+		rigEl.classList.remove("swap"); $(".device-box").classList.remove("enter");
+		try { stageEl.setPointerCapture(drag.id); } catch {}
+	}
+	const now = performance.now(), dt = Math.max(8, now - drag.t);
+	orbit.vy = ((e.clientX - drag.lx) * 0.42) / dt * 16; orbit.vx = (-(e.clientY - drag.ly) * 0.3) / dt * 16;
+	drag.lx = e.clientX; drag.ly = e.clientY; drag.t = now;
+	orbit.y = drag.oy + dx * 0.42; orbit.x = clampX(drag.ox - dy * 0.3);
+	applyOrbit();
+});
+function endDrag() {
+	if (!drag) return;
+	if (drag.on) {
+		swallowClick = true; setTimeout(() => (swallowClick = false), 60);
+		// a little momentum, then settle
+		const spin = () => {
+			orbit.vy *= 0.93; orbit.vx *= 0.88;
+			orbit.y += orbit.vy; orbit.x = clampX(orbit.x + orbit.vx);
+			applyOrbit();
+			if (Math.abs(orbit.vy) > 0.05 || Math.abs(orbit.vx) > 0.05) orbit.raf = requestAnimationFrame(spin);
+			else { document.body.classList.remove("orbiting"); drawCallouts(); }
+		};
+		orbit.raf = requestAnimationFrame(spin);
+	}
+	drag = null;
+}
+window.addEventListener("pointerup", endDrag);
+window.addEventListener("pointercancel", () => { if (drag) { drag.on = false; document.body.classList.remove("orbiting"); } drag = null; });
+stageEl.addEventListener("click", (e) => { if (swallowClick) { e.stopPropagation(); e.preventDefault(); swallowClick = false; } }, true);
+window.__orbitReady = true;
+stageEl.addEventListener("dblclick", (e) => { if (!e.target.closest("#device-screen, .toolbar")) resetOrbit(); });
 bus.on("nav", () => requestAnimationFrame(drawCallouts));
 bus.on("nav", () => setTimeout(syncWatch));
 bus.on("request", () => setTimeout(syncWatch));
@@ -874,4 +941,4 @@ fitDevice();
 open(fromHash >= 0 ? fromHash : lab.lesson);
 setTimeout(fitDevice, 300);
 document.fonts?.ready.then(fitDevice);
-window.__teardown = { lab, pulse, open, LESSONS, useDevice, fitDevice };
+window.__teardown = { lab, pulse, open, LESSONS, useDevice, fitDevice, orbit, applyOrbit, resetOrbit };

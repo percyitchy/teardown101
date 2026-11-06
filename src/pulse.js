@@ -10,9 +10,9 @@ export function createPulse(root, bus) {
 		statsRange: "7d",
 		user: { id: "u_8f21c", name: "Alex", plan: "free", created_at: "2026-03-14T09:21:00Z" },
 		habits: [
-			{ id: "h_01", name: "Read 20 pages", color: "#6D5DFC", streak: 12, done: false, remind_at: "21:30", history: HISTORY(0b1111011) },
-			{ id: "h_02", name: "Morning run", color: "#FF7A59", streak: 4, done: true, remind_at: "07:00", history: HISTORY(0b1011101) },
-			{ id: "h_03", name: "No sugar", color: "#1FAE7A", streak: 0, done: false, remind_at: null, history: HISTORY(0b0010110) },
+			{ id: "h_01", name: "Read 20 pages", color: "#1AA3A1", streak: 12, done: false, remind_at: "21:30", history: HISTORY(0b1111011) },
+			{ id: "h_02", name: "Morning run", color: "#E0773F", streak: 4, done: true, remind_at: "07:00", history: HISTORY(0b1011101) },
+			{ id: "h_03", name: "No sugar", color: "#3E6AA8", streak: 0, done: false, remind_at: null, history: HISTORY(0b0010110) },
 		],
 		settings: { theme: "light", reminders: true, week_start: "mon" },
 	};
@@ -120,7 +120,7 @@ export function createPulse(root, bus) {
 		track(h.done ? "habit_checked" : "habit_unchecked", { habit: id });
 	}
 	function addHabit() {
-		api("POST", "/api/v2/habits", { name: "Drink water", color: "#2D9CDB" }, () => state.user.plan === "free" && state.habits.length >= 3
+		api("POST", "/api/v2/habits", { name: "Drink water", color: "#D9A520" }, () => state.user.plan === "free" && state.habits.length >= 3
 			? [402, { error: "plan_limit", limit: 3, upgrade_url: "/pro" }]
 			: [201, { id: "h_04" }]).then(([status]) => {
 			if (status === 402) { toast("Free plan: 3 habits max"); setTimeout(() => go("pro", "402 on add habit"), 700); }
@@ -167,7 +167,10 @@ export function createPulse(root, bus) {
 				<button class="pl-check ${h.done ? "on" : ""}" data-check="${h.id}" style="--c:${h.color}" aria-label="Check ${h.name}">${svg("check")}</button>
 			</li>`).join("")}
 		</ul>
-		<button class="pl-btn pl-btn--ghost" data-add>${svg("plus")} New habit</button>`;
+		<button class="pl-btn pl-btn--ghost" data-add>${svg("plus")} New habit</button>
+		<section class="pl-week-grid"><div class="pl-wg-head"><span>This week</span><span class="pl-wg-days">${days.map((d) => `<i>${d}</i>`).join("")}</span></div>${state.habits.map((h) => `
+			<div class="pl-wg-row"><span>${h.name}</span><span class="pl-wg-days">${h.history.map((v) => `<b class="${v ? "on" : ""}" style="--c:${h.color}"></b>`).join("")}</span></div>`).join("")}
+		</section>`;
 	}
 	function viewHabit() {
 		const h = habit();
@@ -209,7 +212,7 @@ export function createPulse(root, bus) {
 			<ul class="pl-perks"><li>Unlimited habits</li><li>30-day and yearly stats</li><li>Streak freeze, 2 per month</li></ul>
 			<div class="pl-plan on"><div><b>Yearly</b><span>7-day free trial</span></div><b>$29.99</b></div>
 			<div class="pl-plan"><div><b>Monthly</b><span>cancel anytime</span></div><b>$4.99</b></div>
-			<button class="pl-btn pl-btn--primary" data-trial style="--c:#6D5DFC">Start free trial</button>
+			<button class="pl-btn pl-btn--primary" data-trial style="--c:#1AA3A1">Start free trial</button>
 		</div>`;
 	}
 

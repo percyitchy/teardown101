@@ -23,7 +23,6 @@
 			<button id="reset" title="Reset progress"><svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></svg></button>
 			<button id="sound" class="sound" title="Sound on / off"><svg viewBox="0 0 24 24"><path class="spk" d="M4 9h3.5L12 5.5v13L7.5 15H4z"/><path class="w1" d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path class="w2" d="M18 7a7 7 0 0 1 0 10"/><path class="x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button>
 		</div>
-		<a class="credit" href="https://x.com/zodchiii" target="_blank" rel="noopener"><span class="by">BUILT BY</span><span class="who">x.com/zodchiii</span><svg viewBox="0 0 24 24"><path d="M5 4l14 16M19 4L5 20"/></svg></a>
 	</aside>
 
 	<header class="top">
@@ -45,7 +44,7 @@
 	<main id="stage" class="stage">
 		<div class="floor" aria-hidden="true"></div>
 		<div class="glow" id="glow" aria-hidden="true"></div>
-		<div class="watermark" aria-hidden="true">x.com/zodchiii</div>
+		<div class="orbit-hint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4.5h-4.5"/></svg>DRAG TO ROTATE</div>
 		<div class="dev-label" id="dev-label">PHONE</div>
 		<div class="specimen" id="specimen">
 			<div class="live" id="live"><span class="dot"></span><b id="live-txt">GET /api/v2/me · 200</b></div>
@@ -70,6 +69,7 @@
 			<button data-dev="laptop" title="Laptop"><svg viewBox="0 0 24 24"><rect x="4.5" y="5" width="15" height="10" rx="1.5"/><path d="M2 18.5h20"/></svg></button>
 			<button data-dev="desktop" title="Desktop"><svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="12.5" rx="1.8"/><path d="M9.5 20.5h5M12 16v4.5"/></svg></button>
 			<i></i>
+			<button data-act="view" title="Reset view (or double-click the stage)"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
 			<button data-act="labels" title="Labels on / off"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></button>
 			<button data-act="theme" title="Pulse dark mode"><svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 7.5h6M9 11h6M9 14.5h3"/></svg></button>
 		</div>
@@ -89,7 +89,7 @@
 	</section>
 
 	<footer class="foot">
-		<div class="strip-head"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg><b id="strip-label">LESSON: OBSERVE</b><svg class="chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg></div>
+		<div class="strip-head"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg><b id="strip-label">LESSON: OBSERVE</b><svg class="chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg><a class="byline" href="https://x.com/zodchiii" target="_blank" rel="noopener" title="Follow on X"><svg viewBox="0 0 24 24"><path d="M17.8 3h3.1l-6.8 7.8 8 10.2h-6.3l-4.9-6.4L5.3 21H2.2l7.3-8.3L1.9 3h6.4l4.4 5.9zm-1.1 16.2h1.7L7.4 4.7H5.6z"/></svg><span>Built by <b>@zodchiii</b></span></a></div>
 		<div class="strip-wrap">
 			<div id="strip" class="strip"></div>
 			<button id="strip-left" class="strip-arrow" aria-label="Previous lesson"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
